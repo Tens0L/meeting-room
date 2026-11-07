@@ -211,6 +211,7 @@ export class Renderer {
   private drawFootprints(s: Scene, view: { x0: number; y0: number; x1: number; y1: number }) {
     const ctx = this.ctx;
     const now = Date.now();
+    const boost = isDark() ? 1.7 : 1;
     for (const fp of s.footprints) {
       const color = colorOf(s.profiles.get(fp.userId)?.color);
       ctx.fillStyle = color;
@@ -221,7 +222,7 @@ export class Renderer {
         if (x < view.x0 || x > view.x1 || y < view.y0 || y > view.y1) continue;
         // 古いほど薄く、何度も通ったほど濃く大きく
         const age = Math.min(1, (now - time) / FOOTPRINT_TTL_MS);
-        const alpha = (0.1 + 0.3 * (1 - age)) * Math.min(1, 0.6 + Math.log2(count) * 0.2);
+        const alpha = Math.min(0.9, (0.1 + 0.3 * (1 - age)) * Math.min(1, 0.6 + Math.log2(count) * 0.2) * boost);
         const r = Math.min(4 + Math.log2(count) * 1.5, 8);
         // ユーザーごとに少しずらして重なりを避ける
         const off = (hash(fp.userId) % 5) - 2;
@@ -318,7 +319,7 @@ export class Renderer {
     ctx.beginPath();
     ctx.roundRect(x - w / 2, y - 58, w, 18, 9);
     ctx.fill();
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = isDark() ? "#14161c" : "#fff";
     ctx.fillText(name, x, y - 49);
     if (sub) {
       ctx.font = SMALL;
