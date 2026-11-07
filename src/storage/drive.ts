@@ -1,4 +1,4 @@
-import { AuthExpiredError, type FileStore, type StoredFile } from "./types";
+import { AuthExpiredError, NotFoundError, type FileStore, type StoredFile } from "./types";
 
 const API = "https://www.googleapis.com/drive/v3";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3";
@@ -21,6 +21,7 @@ export class DriveStore implements FileStore {
       headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
     });
     if (res.status === 401) throw new AuthExpiredError();
+    if (res.status === 404) throw new NotFoundError(url);
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(`Drive API ${res.status}: ${body.slice(0, 300)}`);

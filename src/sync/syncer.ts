@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { REMOTE_ORIGIN } from "../model/world";
-import { AuthExpiredError, type FileStore } from "../storage/types";
+import { AuthExpiredError, NotFoundError, type FileStore } from "../storage/types";
 
 export type SyncStatus = "synced" | "dirty" | "syncing" | "error" | "auth";
 
@@ -161,11 +161,30 @@ export class Syncer {
       a.name.localeCompare(b.name),
     );
     if (own.length <= this.compactThreshold) return;
-    const datas = await Promise.all(own.map((f) => this.store.read(f.id)));
-    const id = await this.store.create(this.newFileName(), Y.mergeUpdates(datas));
+    // 同じ人の別のタブや端末が同時に圧縮していると、読む前に消されていることがある。
+    // 消えていたファイルは向こうがまとめ済みなので、こちらでは扱わない
+    const read = await Promise.all(
+      own.map(async (f) => {
+        try {
+          return { f, data: await this.store.read(f.id) };
+        } catch (e) {
+          if (e instanceof NotFoundError) return null;
+          throw e;
+        }
+      }),
+    );
+    const ok = read.filter((r): r is NonNullable<typeof r> => r != null);
+    if (ok.length < 2) return;
+    const id = await this.store.create(this.newFileName(), Y.mergeUpdates(ok.map((r) => r.data)));
     this.applied.add(id);
     // 新しいファイルを作ってから古いものを消す（途中で失敗してもデータは失われない）
-    for (const f of own) await this.store.remove(f.id);
+    for (const { f } of ok) {
+      try {
+        await this.store.remove(f.id);
+      } catch (e) {
+        if (!(e instanceof NotFoundError)) throw e; // すでに別のタブが消していた
+      }
+    }
   }
 
   private newFileName(): string {

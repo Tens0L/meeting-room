@@ -1,4 +1,4 @@
-import type { FileStore, StoredFile } from "./types";
+import { NotFoundError, type FileStore, type StoredFile } from "./types";
 
 interface Entry extends StoredFile {
   data: Uint8Array;
@@ -24,7 +24,7 @@ export class MemoryStore implements FileStore {
 
   async read(id: string): Promise<Uint8Array> {
     const f = this.files.get(id);
-    if (!f) throw new Error(`not found: ${id}`);
+    if (!f) throw new NotFoundError(id);
     return f.data.slice();
   }
 
@@ -36,12 +36,13 @@ export class MemoryStore implements FileStore {
 
   async overwrite(id: string, data: Uint8Array): Promise<void> {
     const f = this.files.get(id);
-    if (!f) throw new Error(`not found: ${id}`);
+    if (!f) throw new NotFoundError(id);
     f.data = data.slice();
     f.modifiedTime = this.now();
   }
 
   async remove(id: string): Promise<void> {
-    this.files.delete(id);
+    // ドライブと同じく、存在しないファイルの削除はエラーにする
+    if (!this.files.delete(id)) throw new NotFoundError(id);
   }
 }

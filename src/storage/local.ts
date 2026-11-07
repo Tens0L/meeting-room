@@ -1,4 +1,4 @@
-import type { FileStore, StoredFile } from "./types";
+import { NotFoundError, type FileStore, type StoredFile } from "./types";
 
 /**
  * 開発用のストア。localStorage に保存するので、同じブラウザの別タブ同士で
@@ -41,7 +41,7 @@ export class LocalStore implements FileStore {
 
   async read(id: string): Promise<Uint8Array> {
     const raw = localStorage.getItem(DATA_PREFIX + id);
-    if (raw == null) throw new Error(`not found: ${id}`);
+    if (raw == null) throw new NotFoundError(id);
     return fromBase64(raw);
   }
 
@@ -56,15 +56,16 @@ export class LocalStore implements FileStore {
 
   async overwrite(id: string, data: Uint8Array): Promise<void> {
     const index = loadIndex();
-    if (!index[id]) throw new Error(`not found: ${id}`);
+    if (!index[id]) throw new NotFoundError(id);
     localStorage.setItem(DATA_PREFIX + id, toBase64(data));
     index[id].modifiedTime = new Date().toISOString();
     saveIndex(index);
   }
 
   async remove(id: string): Promise<void> {
-    localStorage.removeItem(DATA_PREFIX + id);
     const index = loadIndex();
+    if (!index[id]) throw new NotFoundError(id);
+    localStorage.removeItem(DATA_PREFIX + id);
     delete index[id];
     saveIndex(index);
   }

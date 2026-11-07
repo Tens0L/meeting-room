@@ -27,3 +27,11 @@ export class AuthExpiredError extends Error {
     this.name = "AuthExpiredError";
   }
 }
+
+/** ファイルが見つからない（別のタブや端末がすでに消した場合など） */
+export class NotFoundError extends Error {
+  constructor(id: string) {
+    super(`not found: ${id}`);
+    this.name = "NotFoundError";
+  }
+}

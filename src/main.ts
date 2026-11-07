@@ -5,9 +5,10 @@ import { drawAvatar } from "./game/avatars";
 import { Footprints } from "./model/footprints";
 import { World, type Profile } from "./model/world";
 import { DriveStore } from "./storage/drive";
-import { LocalStore, fromBase64, toBase64 } from "./storage/local";
+import { LocalStore } from "./storage/local";
 import type { FileStore } from "./storage/types";
 import { Syncer, type SyncStatus } from "./sync/syncer";
+import { TabPendingStorage, localStorageKV } from "./sync/pending";
 import { isDialogOpen, openNodeEditor, openProfileEditor } from "./ui/dialogs";
 import { h, toast } from "./ui/dom";
 import { colorOf, firstFreeColor } from "./ui/palette";
@@ -78,20 +79,19 @@ async function boot(
   const me = session.userId;
   const world = new World();
   const statusEl = $("sync-status");
-  const pendingKey = `mr-pending:${roomKey}:${me}`;
+  // 未保存の変更の退避先（タブごとに分ける）
+  const pending = new TabPendingStorage(
+    localStorageKV(),
+    `mr-pending:${roomKey}:${me}`,
+    crypto.randomUUID(),
+    Date.now,
+    `mr-pending:${roomKey}:${me}`, // 以前の版のキー
+  );
+  setInterval(() => pending.heartbeat(), 10_000);
 
   const syncer = new Syncer(world.doc, store, {
     userId: me,
-    pendingStorage: {
-      load: () => {
-        const raw = localStorage.getItem(pendingKey);
-        return raw ? fromBase64(raw) : null;
-      },
-      save: (u) => {
-        if (!u) localStorage.removeItem(pendingKey);
-        else localStorage.setItem(pendingKey, toBase64(u));
-      },
-    },
+    pendingStorage: pending,
     onStatus: (s, detail) => renderStatus(s, detail),
   });
 
@@ -230,5 +230,10 @@ async function boot(
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushAll();
   });
-  window.addEventListener("pagehide", flushAll);
+  window.addEventListener("pagehide", () => {
+    flushAll();
+    pending.retire();
+  });
+  // bfcache から戻ってきたら、また生きていることを知らせる
+  window.addEventListener("pageshow", () => pending.heartbeat());
 }
