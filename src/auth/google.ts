@@ -72,7 +72,11 @@ export async function googleSession(clientId: string): Promise<Session> {
       waiting = null;
     },
     error_callback: (e) => {
-      waiting?.reject(new Error(e.message ?? e.type));
+      const msg: Record<string, string> = {
+        popup_closed: "ログイン画面が閉じられました。もう一度お試しください。",
+        popup_failed_to_open: "ログイン画面を開けませんでした。ブラウザのポップアップブロックを解除してください。",
+      };
+      waiting?.reject(new Error(msg[e.type] ?? e.message ?? e.type));
       waiting = null;
     },
   });

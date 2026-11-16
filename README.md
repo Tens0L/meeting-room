@@ -74,13 +74,15 @@ npm run dev
 - アクセストークンは約1時間で切れます。切れると画面上部に「再ログイン」ボタンが出ます
 - テストユーザーに登録していないアカウントはログインできません
 
-### 公開（GitHub Pages など）
+### 公開（GitHub Pages）
 
-```bash
-VITE_BASE=/meeting-room/ VITE_GOOGLE_CLIENT_ID=... npm run build
-```
+`main` に push すると、`.github/workflows/deploy.yml` が GitHub Pages に自動で公開します。
 
-`dist/` を静的ホスティングに置き、その URL を OAuth クライアントの「承認済みの JavaScript 生成元」に追加してください。
+1. リポジトリの **Settings → Pages** で、Source を **GitHub Actions** にする（初回のみ）
+2. OAuth クライアントの「承認済みの JavaScript 生成元」に `https://<ユーザー名>.github.io` を追加する
+3. 公開先は `https://<ユーザー名>.github.io/meeting-room/`
+
+OAuth クライアント ID は `deploy.yml` に書いてあります（公開してよい値です）。別のクライアントを使う場合はそこを書き換えてください。
 
 ## 開発
 
