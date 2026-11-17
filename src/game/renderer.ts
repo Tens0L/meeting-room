@@ -157,7 +157,7 @@ export class Renderer {
       let cy = n.y;
       if (n.id === s.carryingId) {
         cx = s.player.x;
-        cy = s.player.y - 40 - l.h / 2;
+        cy = s.player.y - 66 - l.h / 2; // 名前札の上に持ち上げる
       }
       this.rects.set(n.id, { x: cx - l.w / 2, y: cy - l.h / 2, w: l.w, h: l.h });
     }

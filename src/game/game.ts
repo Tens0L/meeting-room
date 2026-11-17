@@ -188,7 +188,7 @@ export class Game {
     const id = this.renderer.hitNode(w.x, w.y);
     if (id) {
       const r = this.renderer.rects.get(id)!;
-      this.target = { x: r.x + r.w / 2, y: r.y + r.h + 30 };
+      this.target = { x: r.x + r.w / 2, y: r.y + r.h + 64 }; // 名前札がカードに重ならない位置
     } else this.target = w;
   }
 
@@ -225,6 +225,25 @@ export class Game {
       case "x":
         this.deleteFocused();
         break;
+    }
+  }
+
+  /** 画面のボタン（タッチ操作）から呼ぶ。キー操作と同じ動作をする */
+  act(action: "add" | "edit" | "carry" | "lock" | "delete") {
+    if (this.ui.isBlocked()) return;
+    this.target = null;
+    switch (action) {
+      case "add":
+        return this.addNode();
+      case "edit":
+        if (this.focusId) this.ui.openEditor(this.focusId);
+        return;
+      case "carry":
+        return this.toggleCarry();
+      case "lock":
+        return this.toggleLock();
+      case "delete":
+        return this.deleteFocused();
     }
   }
 

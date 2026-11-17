@@ -210,8 +210,37 @@ async function boot(
   });
   const help = $("help");
   $("help-btn").addEventListener("click", () => (help.hidden = !help.hidden));
+  $("help-close").addEventListener("click", () => (help.hidden = true));
+
+  // タッチ端末（スマホ・タブレット）では、キーの代わりに画面下の操作ボタンを使う
+  const touch = window.matchMedia("(pointer: coarse)").matches || params.has("touch");
+  document.body.classList.toggle("touch", touch);
+  if (touch) {
+    const bar = $("actions");
+    bar.hidden = false;
+    const buttons = [...bar.querySelectorAll<HTMLButtonElement>("button[data-act]")];
+    for (const b of buttons) {
+      b.addEventListener("click", () => game.act(b.dataset.act as Parameters<Game["act"]>[0]));
+    }
+    // 近くにノードがあるときだけ押せるボタンを切り替える
+    setInterval(() => {
+      const near = game.focusId != null;
+      const carrying = game.carryingId != null;
+      for (const b of buttons) {
+        const act = b.dataset.act;
+        if (act === "add") b.disabled = carrying;
+        else if (act === "carry") {
+          b.disabled = !near && !carrying;
+          b.classList.toggle("active", carrying);
+          b.querySelector("b")!.textContent = carrying ? "置く" : "持つ";
+        } else b.disabled = !near;
+      }
+    }, 150);
+  }
+
   if (firstTime) {
-    help.hidden = false;
+    // 説明は、画面の広いパソコンでだけ最初から開く。スマホでは「？」で開く
+    if (!touch) help.hidden = false;
     editProfile();
   }
 
