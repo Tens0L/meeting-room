@@ -74,9 +74,7 @@ button.me { display: inline-flex; align-items: center; gap: 6px; }
   position: absolute; top: 6px; right: 6px; width: 36px; height: 36px; padding: 0;
   border: none; background: transparent; font-size: 20px; line-height: 1; color: var(--muted);
 }
-.for-touch { display: none !important; }
-body.touch .for-touch { display: grid !important; }
-body.touch .for-keyboard { display: none !important; }
+
 .help dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 13px; }
 .help dt { font-weight: 600; white-space: nowrap; }
 .help dd { margin: 0; color: var(--muted); }
@@ -100,6 +98,10 @@ dialog input, dialog select, dialog textarea {
 dialog textarea { resize: vertical; min-height: 110px; }
 dialog .actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 12px; }
 dialog .actions .hint { margin-right: auto; }
+dialog .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+dialog .tools button { font-size: 13px; }
+button.danger { color: #c92a2a; }
+@media (prefers-color-scheme: dark) { button.danger { color: #ff8787; } }
 .lock-info { background: var(--bg); border-radius: 8px; padding: 6px 10px; font-size: 13px; margin: 0 0 12px; }
 
 .swatches { display: grid; grid-template-columns: repeat(6, 36px); gap: 8px; }
@@ -140,30 +142,13 @@ dialog .actions .hint { margin-right: auto; }
 .login .error { color: #d64545; }
 
 /* ---------- タッチ端末・狭い画面 ---------- */
-.touchbar {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: flex; justify-content: center; gap: 6px;
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(6px);
-  border-top: 1px solid var(--border);
-}
-.touchbar button {
-  flex: 1; max-width: 88px; min-height: 52px; padding: 4px 2px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  font-size: 11px; white-space: nowrap;
-}
-.touchbar button span { font-size: 18px; line-height: 1.2; }
-.touchbar button b { font-weight: inherit; }
-.touchbar button.active { background: var(--accent); color: var(--accent-text); border-color: transparent; }
-
 body.touch .help {
   left: 8px; right: 8px; width: auto;
-  bottom: calc(76px + env(safe-area-inset-bottom));
+  bottom: calc(12px + env(safe-area-inset-bottom));
   max-height: 45vh; overflow-y: auto;
 }
 body.touch dialog .actions .hint { visibility: hidden; }
-body.touch .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+body.touch .toast { bottom: calc(24px + env(safe-area-inset-bottom)); }
 
 @media (max-width: 560px) {
   header { gap: 6px; padding: 6px 8px; flex-wrap: nowrap; }

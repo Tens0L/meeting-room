@@ -20,31 +20,17 @@
     <section id="help" class="help" hidden>
       <button id="help-close" type="button" class="close" aria-label="閉じる">×</button>
       <h3>操作</h3>
-      <dl class="for-keyboard">
-        <dt>WASD / 矢印</dt><dd>移動（クリックした場所へ歩くことも可）</dd>
-        <dt>E / Enter</dt><dd>近くのノードを開く・編集</dd>
-        <dt>N</dt><dd>近くのノードに子ノードを追加（近くになければ新しいルート）</dd>
-        <dt>G</dt><dd>ノードを持ち上げる / 置く（他のノードの近くに置くとつなぎ直す）</dd>
-        <dt>L</dt><dd>ロック / 解除（ロック中は作成者以外が編集・移動・削除できない）</dd>
-        <dt>X / Delete</dt><dd>削除</dd>
+      <dl>
+        <dt>スワイプ</dt><dd>画面を動かす（マウスはドラッグ、キーは WASD / 矢印）</dd>
+        <dt>ピンチ</dt><dd>拡大・縮小（マウスはホイール、キーは + / -）</dd>
+        <dt>何もない所をタップ</dt><dd>そこにテキスト箱を置く</dd>
+        <dt>箱をタップ</dt><dd>編集する。ロックと削除も編集画面から</dd>
+        <dt>箱を長押し</dt><dd>移動する（マウスはそのままドラッグ）</dd>
+        <dt>箱の右の ＋</dt><dd>右側に、線でつながった箱を追加する</dd>
+        <dt>箱の左の ●</dt><dd>タップしてから別の箱をタップすると、その箱につなぐ（Esc や何もない所のタップで取り消し）</dd>
       </dl>
-      <dl class="for-touch">
-        <dt>タップ</dt><dd>その場所へ歩く（ノードをタップすると近くまで行く）</dd>
-        <dt>＋ 追加</dt><dd>近くのノードに子ノードを追加（近くになければ新しいルート）</dd>
-        <dt>✏️ 開く</dt><dd>近くのノードを開く・編集</dd>
-        <dt>✋ 持つ</dt><dd>ノードを持ち上げて運ぶ。もう一度押すと置く（他のノードの近くに置くとつなぎ直す）</dd>
-        <dt>🔒 ロック</dt><dd>ロック / 解除（ロック中は作成者以外が編集・移動・削除できない）</dd>
-        <dt>🗑 削除</dt><dd>近くのノードを削除</dd>
-      </dl>
-      <p class="hint">枠と左上の丸は作成者の色、肉球は歩いた跡です。半透明のアバターは、その人が最後にいた場所です。</p>
+      <p class="hint">編集中の箱は青、移動中はオレンジ、つなぐ元は緑の縁になります。箱の左上の丸は作成者の色、肉球は画面中央の ＋ が通った跡、半透明のアバターは友人が最後に編集した場所です。</p>
     </section>
-    <nav id="actions" class="touchbar" hidden aria-label="操作">
-      <button type="button" data-act="add"><span>＋</span>追加</button>
-      <button type="button" data-act="edit"><span>✏️</span>開く</button>
-      <button type="button" data-act="carry"><span>✋</span><b>持つ</b></button>
-      <button type="button" data-act="lock"><span>🔒</span>ロック</button>
-      <button type="button" data-act="delete"><span>🗑</span>削除</button>
-    </nav>
     <div id="banner" class="banner" hidden></div>
     <main id="login" class="login" hidden></main>
     <div id="toast" class="toast" role="status"></div>
