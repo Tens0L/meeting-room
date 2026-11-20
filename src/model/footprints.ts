@@ -40,10 +40,9 @@ export class Footprints {
     return `${FOOTPRINT_PREFIX}${this.userId}.json`;
   }
 
-  /** プレイヤーの位置を記録する。新しいマスに入ったときだけ足跡が増える */
+  /** 見ている場所（画面中央）を記録する。新しいマスに入ったときだけ足跡が増える */
   record(x: number, y: number, now = Date.now()) {
     const key = `${Math.floor(x / TILE)},${Math.floor(y / TILE)}`;
-    this.mine.lastPos = { x: Math.round(x), y: Math.round(y) };
     this.mine.lastSeen = now;
     if (key !== this.lastCell) {
       this.lastCell = key;
@@ -53,12 +52,19 @@ export class Footprints {
     }
   }
 
+  /** 箱を編集した場所を、自分の居場所として記録する（他の人にはここにアバターが出る） */
+  markPresence(x: number, y: number, now = Date.now()) {
+    this.mine.lastPos = { x: Math.round(x), y: Math.round(y) };
+    this.mine.lastSeen = now;
+    this.dirty = true;
+  }
+
   /** 起動時：自分の過去の足跡と、他の人の足跡を読み込む */
   async load() {
     const saved = await this.readOwner(await this.store.list(FOOTPRINT_PREFIX), this.userId);
     if (saved) {
       mergeInto(this.mine, saved.data);
-      // 起動直後は、前回いた場所から始める
+      // 起動直後は、前回編集した場所から始める
       this.mine.lastPos = saved.data.lastPos ?? this.mine.lastPos;
     }
     await this.pullOthers();

@@ -165,19 +165,21 @@ async function boot(
     footprints,
     me,
     {
-      openEditor: (id, isNew) =>
+      openEditor: (id, isNew, onClose) =>
         openNodeEditor(world, me, id, () => {
-          if (isNew && !world.getNode(id)?.text.trim()) world.deleteNode(me, id);
+          // 作ったばかりの箱を空のまま閉じたら消す
+          if (isNew && world.getNode(id) && !world.getNode(id)!.text.trim()) world.deleteNode(me, id);
+          onClose();
         }),
       toast,
-      confirm: (m) => window.confirm(m),
       isBlocked: () => isDialogOpen() || !$("login").hidden,
     },
     lastVisit,
   );
   const root = world.allNodes().find((n) => n.parentId == null);
   if (import.meta.env.DEV) Object.assign(window, { __mr: { game, world, syncer, footprints } });
-  game.start(footprints.mine.lastPos ?? { x: root?.x ?? 0, y: (root?.y ?? 0) + 120 });
+  // 前回編集した場所（なければ最初の箱）を画面の中央にして始める
+  game.start(footprints.mine.lastPos ?? { x: root?.x ?? 0, y: root?.y ?? 0 });
 
   // ---------- ヘッダー ----------
   const renderHeader = () => {
@@ -212,31 +214,8 @@ async function boot(
   $("help-btn").addEventListener("click", () => (help.hidden = !help.hidden));
   $("help-close").addEventListener("click", () => (help.hidden = true));
 
-  // タッチ端末（スマホ・タブレット）では、キーの代わりに画面下の操作ボタンを使う
   const touch = window.matchMedia("(pointer: coarse)").matches || params.has("touch");
   document.body.classList.toggle("touch", touch);
-  if (touch) {
-    const bar = $("actions");
-    bar.hidden = false;
-    const buttons = [...bar.querySelectorAll<HTMLButtonElement>("button[data-act]")];
-    for (const b of buttons) {
-      b.addEventListener("click", () => game.act(b.dataset.act as Parameters<Game["act"]>[0]));
-    }
-    // 近くにノードがあるときだけ押せるボタンを切り替える
-    setInterval(() => {
-      const near = game.focusId != null;
-      const carrying = game.carryingId != null;
-      for (const b of buttons) {
-        const act = b.dataset.act;
-        if (act === "add") b.disabled = carrying;
-        else if (act === "carry") {
-          b.disabled = !near && !carrying;
-          b.classList.toggle("active", carrying);
-          b.querySelector("b")!.textContent = carrying ? "置く" : "持つ";
-        } else b.disabled = !near;
-      }
-    }, 150);
-  }
 
   if (firstTime) {
     // 説明は、画面の広いパソコンでだけ最初から開く。スマホでは「？」で開く

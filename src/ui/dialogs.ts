@@ -1,7 +1,7 @@
 import { AVATARS, AVATAR_KEYS, drawAvatar } from "../game/avatars";
 import { STATUS_LABEL, TYPE_META, timeAgo } from "../game/labels";
 import type { NodeStatus, NodeType, Profile, World } from "../model/world";
-import { h } from "./dom";
+import { h, toast } from "./dom";
 import { PALETTE, PALETTE_KEYS, colorOf } from "./palette";
 
 let open: HTMLDialogElement | null = null;
@@ -78,6 +78,39 @@ export function openNodeEditor(world: World, me: string, nodeId: string, onClose
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
   });
 
+  // ロック・削除（編集画面の中で操作する）
+  const lockBtn = h("button", { type: "button" });
+  const renderLock = () => {
+    const cur = world.getNode(nodeId)?.lock ?? null;
+    if (!cur) {
+      lockBtn.textContent = "🔒 ロックする";
+      lockBtn.disabled = false;
+    } else if (cur.by === me) {
+      lockBtn.textContent = "🔓 ロック解除";
+      lockBtn.disabled = false;
+    } else {
+      lockBtn.textContent = `🔒 ${name(cur.by)}さんがロック中`;
+      lockBtn.disabled = true;
+    }
+  };
+  lockBtn.addEventListener("click", () => {
+    if (world.getNode(nodeId)?.lock) {
+      if (world.unlock(me, nodeId)) toast("🔓 ロックを解除しました");
+    } else if (world.lock(me, nodeId)) {
+      toast("🔒 ロックしました（他の人は編集・移動・削除できません。子の追加はできます）");
+    }
+    renderLock();
+  });
+  renderLock();
+
+  const deleteBtn = h("button", { type: "button", class: "danger", disabled: !editable }, "🗑 削除");
+  deleteBtn.addEventListener("click", () => {
+    const label = (world.getNode(nodeId)?.text ?? "").trim().split("\n")[0].slice(0, 20) || "（未入力）";
+    if (!window.confirm(`「${label}」を削除しますか？（つながっていた箱は、ひとつ上の箱につなぎ直されます）`)) return;
+    world.deleteNode(me, nodeId);
+    dlg.close();
+  });
+
   dlg.append(
     h("h2", {}, h("span", { class: "dot", style: `background:${colorOf(author?.color)}` }), `${TYPE_META[n.type].icon} ノード`),
     h("p", { class: "meta" },
@@ -86,6 +119,7 @@ export function openNodeEditor(world: World, me: string, nodeId: string, onClose
     lockInfo ?? "",
     h("div", { class: "row" }, h("label", {}, "種類", typeSel), statusRow, assigneeRow),
     text,
+    h("div", { class: "tools" }, lockBtn, deleteBtn),
     h("div", { class: "actions" },
       h("span", { class: "hint" }, editable ? "Ctrl+Enter で保存" : ""),
       h("button", { type: "button", onclick: () => dlg.close() }, editable ? "キャンセル" : "閉じる"),

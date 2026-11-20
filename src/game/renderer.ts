@@ -18,17 +18,34 @@ export interface Ghost {
   lastSeen: number;
 }
 
+export interface Camera {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export type HitKind = "box" | "anchor" | "plus";
+export interface Hit {
+  kind: HitKind;
+  id: string;
+}
+
 export interface Scene {
   me: string;
-  player: { x: number; y: number; walking: boolean };
+  camera: Camera;
   nodes: NodeData[];
   parents: Map<string, string | null>;
   profiles: Map<string, Profile>;
   footprints: FootprintData[];
   ghosts: Ghost[];
-  focusId: string | null;
-  carryingId: string | null;
-  dropTargetId: string | null;
+  /** 編集画面を開いている箱（縁の色を変え、横に自分のアバターを出す） */
+  editingId: string | null;
+  /** 移動中の箱と、その中心座標 */
+  moving: { id: string; x: number; y: number } | null;
+  /** アンカーをタップして「つなぐ先」を選んでいる箱 */
+  connectFromId: string | null;
+  /** つなぐ先を選んでいる間の指・マウスの位置（ワールド座標） */
+  pointer: { x: number; y: number } | null;
   /** 前回の訪問時刻。これより後に他の人が更新したノードに NEW を付ける */
   lastVisit: number;
 }
@@ -38,6 +55,16 @@ const SMALL = '11px system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", s
 const MAX_W = 220;
 const PAD = 10;
 const LINE_H = 19;
+/** 箱の左のアンカー・右の＋ボタンの、箱の縁からの距離と半径 */
+const ANCHOR_OFF = 14;
+const ANCHOR_R = 7;
+const PLUS_OFF = 18;
+const PLUS_R = 11;
+/** アンカー・＋ボタンの当たり判定（画面上の px）。指で押しやすいよう見た目より大きい */
+const HANDLE_HIT_PX = 22;
+
+export const MIN_ZOOM = 0.3;
+export const MAX_ZOOM = 2.5;
 
 interface Theme {
   bg: string;
@@ -46,23 +73,53 @@ interface Theme {
   cardText: string;
   muted: string;
   edge: string;
+  editing: string;
+  moving: string;
+  connecting: string;
 }
 
 function theme(): Theme {
   return isDark()
-    ? { bg: "#1b1f27", grid: "rgba(255,255,255,0.05)", card: "#262c38", cardText: "#e8ecf3", muted: "#9aa4b5", edge: "rgba(200,210,230,0.35)" }
-    : { bg: "#f3efe6", grid: "rgba(60,50,30,0.07)", card: "#fffdf8", cardText: "#2a2620", muted: "#7b7366", edge: "rgba(80,70,50,0.35)" };
+    ? {
+        bg: "#1b1f27", grid: "rgba(255,255,255,0.05)", card: "#262c38", cardText: "#e8ecf3", muted: "#9aa4b5",
+        edge: "rgba(200,210,230,0.35)", editing: "#74c0fc", moving: "#ffc078", connecting: "#8ce99a",
+      }
+    : {
+        bg: "#f3efe6", grid: "rgba(60,50,30,0.07)", card: "#fffdf8", cardText: "#2a2620", muted: "#7b7366",
+        edge: "rgba(80,70,50,0.35)", editing: "#1c7ed6", moving: "#e8590c", connecting: "#2b8a3e",
+      };
+}
+
+/** 箱の左のアンカーと右の＋ボタンの位置 */
+export function handles(r: Rect) {
+  const cy = r.y + r.h / 2;
+  return { anchor: { x: r.x - ANCHOR_OFF, y: cy }, plus: { x: r.x + r.w + PLUS_OFF, y: cy } };
+}
+
+/** 編集中の箱の横に立つアバターの足元の位置（他の人にはここにゴーストが出る） */
+export function presenceSpot(r: Rect) {
+  return { x: r.x - ANCHOR_OFF - 30, y: r.y + r.h };
 }
 
 export class Renderer {
   readonly rects = new Map<string, Rect>();
+  /** 描いた順（上に描いたものほど後ろ）。当たり判定は逆順に見る */
+  private order: string[] = [];
   private layoutCache = new Map<string, { lines: string[]; w: number; h: number }>();
-  camera = { x: 0, y: 0 };
+  camera: Camera = { x: 0, y: 0, zoom: 1 };
 
   constructor(private canvas: HTMLCanvasElement) {}
 
   private get ctx() {
     return this.canvas.getContext("2d")!;
+  }
+
+  get width() {
+    return this.canvas.clientWidth;
+  }
+
+  get height() {
+    return this.canvas.clientHeight;
   }
 
   resize() {
@@ -72,12 +129,32 @@ export class Renderer {
   }
 
   screenToWorld(sx: number, sy: number) {
-    return { x: sx - this.canvas.clientWidth / 2 + this.camera.x, y: sy - this.canvas.clientHeight / 2 + this.camera.y };
+    const c = this.camera;
+    return { x: (sx - this.width / 2) / c.zoom + c.x, y: (sy - this.height / 2) / c.zoom + c.y };
   }
 
-  hitNode(wx: number, wy: number): string | null {
-    for (const [id, r] of this.rects) {
-      if (wx >= r.x && wx <= r.x + r.w && wy >= r.y && wy <= r.y + r.h) return id;
+  /** 画面上の点 (sx, sy) にあるもの。アンカーと＋ボタンを箱より優先する */
+  hitTest(sx: number, sy: number): Hit | null {
+    const w = this.screenToWorld(sx, sy);
+    const reach = HANDLE_HIT_PX / this.camera.zoom;
+    let best: Hit | null = null;
+    let bestD = Infinity;
+    for (const id of this.order) {
+      const hd = handles(this.rects.get(id)!);
+      for (const kind of ["anchor", "plus"] as const) {
+        const p = hd[kind];
+        const d = Math.hypot(p.x - w.x, p.y - w.y);
+        if (d <= Math.max(reach, kind === "plus" ? PLUS_R : ANCHOR_R) && d < bestD) {
+          bestD = d;
+          best = { kind, id };
+        }
+      }
+    }
+    if (best) return best;
+    for (let i = this.order.length - 1; i >= 0; i--) {
+      const id = this.order[i];
+      const r = this.rects.get(id)!;
+      if (w.x >= r.x && w.x <= r.x + r.w && w.y >= r.y && w.y <= r.y + r.h) return { kind: "box", id };
     }
     return null;
   }
@@ -119,49 +196,47 @@ export class Renderer {
     const ctx = this.ctx;
     const th = theme();
     const dpr = window.devicePixelRatio || 1;
-    const W = this.canvas.clientWidth;
-    const H = this.canvas.clientHeight;
-    // カメラはプレイヤーをなめらかに追う
-    this.camera.x += (s.player.x - this.camera.x) * 0.12;
-    this.camera.y += (s.player.y - this.camera.y) * 0.12;
+    const W = this.width;
+    const H = this.height;
+    const c = (this.camera = s.camera);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = th.bg;
     ctx.fillRect(0, 0, W, H);
-    ctx.translate(Math.round(W / 2 - this.camera.x), Math.round(H / 2 - this.camera.y));
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(c.zoom, c.zoom);
+    ctx.translate(-c.x, -c.y);
 
-    const view = { x0: this.camera.x - W / 2 - TILE, y0: this.camera.y - H / 2 - TILE, x1: this.camera.x + W / 2 + TILE, y1: this.camera.y + H / 2 + TILE };
+    const hw = W / 2 / c.zoom + TILE;
+    const hh = H / 2 / c.zoom + TILE;
+    const view = { x0: c.x - hw, y0: c.y - hh, x1: c.x + hw, y1: c.y + hh };
 
     // グリッド
     ctx.strokeStyle = th.grid;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 / c.zoom;
     ctx.beginPath();
     for (let x = Math.floor(view.x0 / TILE) * TILE; x < view.x1; x += TILE) {
-      ctx.moveTo(x + 0.5, view.y0);
-      ctx.lineTo(x + 0.5, view.y1);
+      ctx.moveTo(x, view.y0);
+      ctx.lineTo(x, view.y1);
     }
     for (let y = Math.floor(view.y0 / TILE) * TILE; y < view.y1; y += TILE) {
-      ctx.moveTo(view.x0, y + 0.5);
-      ctx.lineTo(view.x1, y + 0.5);
+      ctx.moveTo(view.x0, y);
+      ctx.lineTo(view.x1, y);
     }
     ctx.stroke();
 
     this.drawFootprints(s, view);
 
-    // ノードの位置を決めてから辺を描く
+    // 箱の位置を決めてから線を描く
     this.rects.clear();
-    const byId = new Map(s.nodes.map((n) => [n.id, n]));
     for (const n of s.nodes) {
       const l = this.layout(n);
-      let cx = n.x;
-      let cy = n.y;
-      if (n.id === s.carryingId) {
-        cx = s.player.x;
-        cy = s.player.y - 66 - l.h / 2; // 名前札の上に持ち上げる
-      }
+      const cx = s.moving?.id === n.id ? s.moving.x : n.x;
+      const cy = s.moving?.id === n.id ? s.moving.y : n.y;
       this.rects.set(n.id, { x: cx - l.w / 2, y: cy - l.h / 2, w: l.w, h: l.h });
     }
 
+    // 線は親の＋ボタンから子のアンカーへ
     ctx.strokeStyle = th.edge;
     ctx.lineWidth = 2;
     for (const n of s.nodes) {
@@ -169,43 +244,66 @@ export class Renderer {
       const a = p ? this.rects.get(p) : null;
       const b = this.rects.get(n.id);
       if (!a || !b) continue;
-      const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2;
+      const from = handles(a).plus;
+      const to = handles(b).anchor;
+      const mx = (from.x + to.x) / 2;
       ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.bezierCurveTo((ax + bx) / 2, ay, (ax + bx) / 2, by, bx, by);
+      ctx.moveTo(from.x, from.y);
+      ctx.bezierCurveTo(Math.max(mx, from.x + 30), from.y, Math.min(mx, to.x - 30), to.y, to.x, to.y);
       ctx.stroke();
     }
-    // 運んでいるノードの付け替え先プレビュー
-    if (s.carryingId && s.dropTargetId) {
-      const a = this.rects.get(s.dropTargetId)!;
-      const b = this.rects.get(s.carryingId)!;
+
+    // 移動中・編集中の箱は最後に（上に）描く
+    const front = new Set([s.moving?.id, s.editingId, s.connectFromId].filter(Boolean) as string[]);
+    const ordered = [...s.nodes.filter((n) => !front.has(n.id)), ...s.nodes.filter((n) => front.has(n.id))];
+    this.order = ordered.map((n) => n.id);
+    for (const n of ordered) this.drawNode(n, s, th, t);
+
+    // つなぐ先を選んでいる間は、アンカーから指・マウスまで点線を引く
+    if (s.connectFromId && this.rects.has(s.connectFromId)) {
+      const from = handles(this.rects.get(s.connectFromId)!).anchor;
+      const to = s.pointer ?? { x: from.x - 80, y: from.y };
       ctx.save();
-      ctx.setLineDash([6, 6]);
-      ctx.strokeStyle = colorOf(s.profiles.get(s.me)?.color);
+      ctx.setLineDash([6 / c.zoom, 6 / c.zoom]);
+      ctx.strokeStyle = th.connecting;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(a.x + a.w / 2, a.y + a.h / 2);
-      ctx.lineTo(b.x + b.w / 2, b.y + b.h / 2);
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
       ctx.stroke();
       ctx.restore();
     }
 
-    // 運んでいるノードは最後に描く
-    const order = s.nodes.filter((n) => n.id !== s.carryingId);
-    if (s.carryingId && byId.has(s.carryingId)) order.push(byId.get(s.carryingId)!);
-    for (const n of order) this.drawNode(n, s, th, t);
-
-    // 他の人の最後の居場所（留守中の「ゴースト」）
+    // 他の人が最後に編集した場所（半透明のアバター）
     for (const g of s.ghosts) {
       const p = s.profiles.get(g.userId);
       ctx.globalAlpha = 0.5;
       drawAvatar(ctx, p?.avatar ?? "slime", g.x, g.y, colorOf(p?.color), t);
       ctx.globalAlpha = 1;
-      this.nameTag(p?.displayName ?? "?", `${timeAgo(g.lastSeen)}にここにいた`, g.x, g.y, colorOf(p?.color), th, 0.75);
+      this.nameTag(p?.displayName ?? "?", `最終 ${timeAgo(g.lastSeen)}`, g.x, g.y, colorOf(p?.color), th, 0.75);
     }
 
-    const me = s.profiles.get(s.me);
-    drawAvatar(ctx, me?.avatar ?? "slime", s.player.x, s.player.y, colorOf(me?.color), t, s.player.walking);
-    this.nameTag(me?.displayName ?? "わたし", me?.statusText ?? "", s.player.x, s.player.y, colorOf(me?.color), th, 1);
+    // 編集中は、その箱の横に自分のアバターを出す
+    const editing = s.editingId ? this.rects.get(s.editingId) : null;
+    if (editing) {
+      const me = s.profiles.get(s.me);
+      const at = presenceSpot(editing);
+      drawAvatar(ctx, me?.avatar ?? "slime", at.x, at.y, colorOf(me?.color), t, true);
+      this.nameTag(me?.displayName ?? "わたし", "", at.x, at.y, colorOf(me?.color), th, 1);
+    }
+
+    // 画面中央の小さなプラス（足跡はここに残る）
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.strokeStyle = th.muted;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 7, H / 2);
+    ctx.lineTo(W / 2 + 7, H / 2);
+    ctx.moveTo(W / 2, H / 2 - 7);
+    ctx.lineTo(W / 2, H / 2 + 7);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   private drawFootprints(s: Scene, view: { x0: number; y0: number; x1: number; y1: number }) {
@@ -238,30 +336,37 @@ export class Renderer {
     const r = this.rects.get(n.id)!;
     const l = this.layout(n);
     const authorColor = colorOf(s.profiles.get(n.authorId)?.color);
-    const focused = n.id === s.focusId || n.id === s.dropTargetId;
+    // 編集中・移動中・つなぐ元の箱は、縁を別の色にする
+    const mode =
+      s.moving?.id === n.id ? th.moving : s.editingId === n.id ? th.editing : s.connectFromId === n.id ? th.connecting : null;
+    const border = mode ?? authorColor;
+    const width = mode ? 4 : n.lock ? 3 : 2;
 
     ctx.save();
-    if (focused) {
-      ctx.shadowColor = authorColor;
-      ctx.shadowBlur = 16 + Math.sin(t / 200) * 4;
+    if (mode) {
+      ctx.shadowColor = mode;
+      ctx.shadowBlur = 14 + Math.sin(t / 200) * 4;
     } else {
       ctx.shadowColor = "rgba(0,0,0,0.12)";
       ctx.shadowBlur = 6;
       ctx.shadowOffsetY = 2;
     }
+    if (s.moving?.id === n.id) {
+      ctx.shadowBlur = 24;
+      ctx.shadowOffsetY = 8;
+    }
     ctx.fillStyle = th.card;
-    ctx.strokeStyle = authorColor;
-    ctx.lineWidth = n.lock ? 3 : 2;
     ctx.beginPath();
     ctx.roundRect(r.x, r.y, r.w, r.h, 8);
     ctx.fill();
     ctx.restore();
-    ctx.strokeStyle = authorColor;
-    ctx.lineWidth = n.lock ? 3 : 2;
-    if (n.lock) ctx.setLineDash([]);
+    ctx.strokeStyle = border;
+    ctx.lineWidth = width;
     ctx.beginPath();
     ctx.roundRect(r.x, r.y, r.w, r.h, 8);
     ctx.stroke();
+
+    this.drawHandles(n, r, s, th, authorColor);
 
     // 作成者マーク（左上の色付きの丸）
     ctx.fillStyle = authorColor;
@@ -305,6 +410,44 @@ export class Renderer {
       ctx.textBaseline = "middle";
       ctx.fillText("NEW", tx + 5, r.y);
     }
+  }
+
+  /** 箱の左のアンカー（つなぐ）と右の＋ボタン（子を追加） */
+  private drawHandles(n: NodeData, r: Rect, s: Scene, th: Theme, authorColor: string) {
+    const ctx = this.ctx;
+    const { anchor, plus } = handles(r);
+    const lockedByOther = !!n.lock && n.lock.by !== s.me;
+    const connecting = s.connectFromId === n.id;
+    const hasParent = s.parents.get(n.id) != null;
+
+    // アンカー：つながっていれば塗りつぶし、つなぐ元なら緑
+    ctx.save();
+    ctx.globalAlpha = lockedByOther ? 0.35 : 1;
+    ctx.beginPath();
+    ctx.arc(anchor.x, anchor.y, connecting ? ANCHOR_R + 2 : ANCHOR_R, 0, Math.PI * 2);
+    ctx.fillStyle = connecting ? th.connecting : hasParent ? authorColor : th.card;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = connecting ? th.connecting : authorColor;
+    ctx.stroke();
+    ctx.restore();
+
+    // ＋ボタン
+    ctx.beginPath();
+    ctx.arc(plus.x, plus.y, PLUS_R, 0, Math.PI * 2);
+    ctx.fillStyle = th.card;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = th.muted;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(plus.x - 5, plus.y);
+    ctx.lineTo(plus.x + 5, plus.y);
+    ctx.moveTo(plus.x, plus.y - 5);
+    ctx.lineTo(plus.x, plus.y + 5);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = th.cardText;
+    ctx.stroke();
   }
 
   private nameTag(name: string, sub: string, x: number, y: number, color: string, th: Theme, alpha: number) {
