@@ -88,6 +88,11 @@ export class Game {
     });
     canvas.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    // iPhone の Safari は長押しで拡大鏡や文字選択を出そうとするので、地図の上では止める。
+    // 操作はポインターイベントで受けているので、タッチイベントを止めても影響しない
+    const stop = (e: TouchEvent) => e.preventDefault();
+    canvas.addEventListener("touchstart", stop, { passive: false });
+    canvas.addEventListener("touchmove", stop, { passive: false });
   }
 
   start(center: { x: number; y: number }) {
