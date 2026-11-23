@@ -45,6 +45,18 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 #world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+/* 長押しで文字選択や「コピー・調べる」メニューが出ないようにする（iPhone の Safari） */
+html, body, #world, header, .help, .toast {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* 入力欄ではこれまでどおり選択・コピー・貼り付けができる */
+input, textarea, select, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
 
 header {
   position: fixed; top: 0; left: 0; right: 0; z-index: 5;

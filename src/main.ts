@@ -19,6 +19,11 @@ const mode = params.get("mode") ?? (CLIENT_ID ? "drive" : "local");
 
 const $ = (id: string) => document.getElementById(id)!;
 
+// 入力欄以外では、長押しやドラッグで文字が選択されないようにする
+document.addEventListener("selectstart", (e) => {
+  if (!(e.target instanceof Element) || !e.target.closest("input, textarea, select, [contenteditable]")) e.preventDefault();
+});
+
 if (mode === "local") {
   void boot(localSession(params.get("user")), new LocalStore(), "local", { pollMs: 3000, flushDelayMs: 1000 });
 } else {
